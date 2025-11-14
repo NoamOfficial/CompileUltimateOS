@@ -1,0 +1,168 @@
+; ====================================
+; ATA PIO Macros for NASM (Literal LBA + Buffer)
+; ====================================
+
+%ifndef ATA_PIO_MACROS_CLEAN_INC
+%define ATA_PIO_MACROS_CLEAN_INC
+
+; -------- ATA PORTS -------------
+ATA_PRIMARY_IO        equ 0x1F0
+ATA_PRIMARY_CTRL      equ 0x3F6
+
+ATA_DATA              equ ATA_PRIMARY_IO + 0
+ATA_ERROR             equ ATA_PRIMARY_IO + 1
+ATA_FEATURES          equ ATA_PRIMARY_IO + 1
+ATA_SECTOR_COUNT      equ ATA_PRIMARY_IO + 2
+ATA_LBA_LO            equ ATA_PRIMARY_IO + 3
+ATA_LBA_MID           equ ATA_PRIMARY_IO + 4
+ATA_LBA_HI            equ ATA_PRIMARY_IO + 5
+ATA_DRIVE_SELECT      equ ATA_PRIMARY_IO + 6
+ATA_COMMAND           equ ATA_PRIMARY_IO + 7
+ATA_STATUS            equ ATA_PRIMARY_IO + 7
+
+ATA_ALT_STATUS        equ ATA_PRIMARY_CTRL
+ATA_DEVICE_CONTROL    equ ATA_PRIMARY_CTRL
+
+; -------- STATUS BITS -----------
+ATA_BSY               equ 0x80
+ATA_DRDY              equ 0x40
+ATA_DF                equ 0x20
+ATA_DRQ               equ 0x08
+ATA_ERR               equ 0x01
+
+; -------- COMMANDS -------------
+ATA_CMD_READ_SECTORS  equ 0x20
+ATA_CMD_WRITE_SECTORS equ 0x30
+ATA_CMD_IDENTIFY      equ 0xEC
+
+; ====================================
+; MACRO: wait_not_busy
+; ====================================
+%macro WAIT_NOT_BUSY 0
+.wait_busy_%$:
+    in al, ATA_ALT_STATUS
+    test al, ATA_BSY
+    jnz .wait_busy_%$
+%endmacro
+
+; ====================================
+; MACRO: wait_drq
+; ====================================
+%macro WAIT_DRQ 0
+.wait_drq_%$:
+    in al, ATA_ALT_STATUS
+    test al, ATA_DRQ
+    jz .wait_drq_%$
+%endmacro
+
+; ====================================
+; MACRO: ATA_READ_SECTOR LBA, BUFFER
+; ====================================
+%macro ATA_READ_SECTOR 2
+    WAIT_NOT_BUSY
+
+    mov dx, ATA_SECTOR_COUNT
+    mov al, 1
+    out dx, al
+
+    mov dx, ATA_LBA_LO
+    mov al, byte %1
+    out dx, al
+
+    mov dx, ATA_LBA_MID
+    mov al, byte (%1 >> 8)
+    out dx, al
+
+    mov dx, ATA_LBA_HI
+    mov al, byte (%1 >> 16)
+    out dx, al
+
+    mov dx, ATA_DRIVE_SELECT
+    mov al, 0xE0
+    or al, byte (%1 >> 24)
+    out dx, al
+
+    mov dx, ATA_COMMAND
+    mov al, ATA_CMD_READ_SECTORS
+    out dx, al
+
+    WAIT_DRQ
+
+    mov cx, 256
+    mov di, %2
+    mov dx, ATA_DATA
+.rd_loop_%$:
+    in ax, dx
+    stosw
+    loop .rd_loop_%$
+%endmacro
+
+; ====================================
+; MACRO: ATA_WRITE_SECTOR LBA, BUFFER
+; ====================================
+%macro ATA_WRITE_SECTOR 2
+    WAIT_NOT_BUSY
+
+    mov dx, ATA_SECTOR_COUNT
+    mov al, 1
+    out dx, al
+
+    mov dx, ATA_LBA_LO
+    mov al, byte %1
+    out dx, al
+
+    mov dx, ATA_LBA_MID
+    mov al, byte (%1 >> 8)
+    out dx, al
+
+    mov dx, ATA_LBA_HI
+    mov al, byte (%1 >> 16)
+    out dx, al
+
+    mov dx, ATA_DRIVE_SELECT
+    mov al, 0xE0
+    or al, byte (%1 >> 24)
+    out dx, al
+
+    mov dx, ATA_COMMAND
+    mov al, ATA_CMD_WRITE_SECTORS
+    out dx, al
+
+    WAIT_DRQ
+
+    mov cx, 256
+    mov si, %2
+    mov dx, ATA_DATA
+.wr_loop_%$:
+    lodsw
+    out dx, ax
+    loop .wr_loop_%$
+%endmacro
+
+; ====================================
+; MACRO: ATA_IDENTIFY BUFFER
+; ====================================
+%macro ATA_IDENTIFY 1
+    WAIT_NOT_BUSY
+
+    mov dx, ATA_DRIVE_SELECT
+    mov al, 0xA0 ; master
+    out dx, al
+
+    mov dx, ATA_COMMAND
+    mov al, ATA_CMD_IDENTIFY
+    out dx, al
+
+    WAIT_DRQ
+
+    mov cx, 256
+    mov di, %1
+    mov dx, ATA_DATA
+.id_loop_%$:
+    in ax, dx
+    stosw
+    loop .id_loop_%$
+%endmacro
+
+%endif
+
