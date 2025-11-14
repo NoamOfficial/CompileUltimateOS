@@ -1,12 +1,14 @@
-name: Assemble x86 NASM
+name: Assemble x86 NASM with Includes to BIN + HEX
 
 on:
   push:
     paths:
       - '**/*.asm'
+      - 'includes/**'
   pull_request:
     paths:
       - '**/*.asm'
+      - 'includes/**'
 
 jobs:
   build:
@@ -16,25 +18,28 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Install NASM
-      run: sudo apt-get update && sudo apt-get install -y nasm
+    - name: Install NASM & xxd
+      run: sudo apt-get update && sudo apt-get install -y nasm xxd
 
     - name: Create output folder
       run: mkdir -p build
 
-    - name: Assemble all .asm files
+    - name: Assemble all .asm files to BIN + HEX with includes
       run: |
         for f in $(find . -name "*.asm"); do
           filename=$(basename "$f" .asm)
-          # Assemble to flat binary
-          nasm -f bin "$f" -o "build/$filename.bin"
-          # Produce hex listing
+          # Assemble to flat binary (.bin), add includes folder
+          nasm -f bin -I includes "$f" -o "build/$filename.bin"
+          # Create hex dump (.hex)
           xxd "build/$filename.bin" > "build/$filename.hex"
         done
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+    - name: Upload BIN + HEX artifacts
+      uses: actions/upload-artifact@v4
       with:
         name: asm-output
         path: build/
+        compression-level: 0
+        if-no-files-found: error
+
 
