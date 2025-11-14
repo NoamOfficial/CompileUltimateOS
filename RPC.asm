@@ -49,6 +49,7 @@ loop loop
 jmp copy
 WriteMessage:
 mov [0x400], [esp + 2)
+jmp copy
 
 
 
