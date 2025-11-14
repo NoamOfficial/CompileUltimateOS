@@ -1,7 +1,7 @@
 BITS 32
 
-; -------------------------------
-; Keep original DATA_SELECTOR
+
+
 %define DATA_SELECTOR 0x130
 
 section .data
