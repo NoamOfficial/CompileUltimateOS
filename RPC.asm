@@ -2,7 +2,7 @@ org 0x130
 resb 65335
 db FF
 org 0x200
-mov es, 0x130
+mov es, seg [0x130]
 mov di, 0
 copy:
 lodsb
@@ -24,7 +24,7 @@ jmp copy
 CallService:
 push es
 push di
-mov es, 0x900
+mov es, seg [0x900]
 mov di, 0
 search:
 lodsw
@@ -39,7 +39,7 @@ pop di
 jmp copy
 ClearShared:
 mov cx, 65335
-mov ds, seg 0x130
+mov ds, seg [0x130]
 mov si, 0
 mov al, 0
 loop:
@@ -48,7 +48,7 @@ add si, 1
 loop loop
 jmp copy
 WriteMessage:
-mov [0x400], [esp + 2)
+mov [0x400], [esp + 2]
 jmp copy
 
 
