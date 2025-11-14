@@ -1,0 +1,40 @@
+name: Assemble x86 NASM
+
+on:
+  push:
+    paths:
+      - '**/*.asm'
+  pull_request:
+    paths:
+      - '**/*.asm'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install NASM
+      run: sudo apt-get update && sudo apt-get install -y nasm
+
+    - name: Create output folder
+      run: mkdir -p build
+
+    - name: Assemble all .asm files
+      run: |
+        for f in $(find . -name "*.asm"); do
+          filename=$(basename "$f" .asm)
+          # Assemble to flat binary
+          nasm -f bin "$f" -o "build/$filename.bin"
+          # Produce hex listing
+          xxd "build/$filename.bin" > "build/$filename.hex"
+        done
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: asm-output
+        path: build/
+
