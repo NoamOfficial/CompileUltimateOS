@@ -30,15 +30,19 @@ NATA_SECTOR_COUNT   equ 0x06
 
 ; -----------------------------------------------------
 ; Find chipset base dynamically
-; Returns: AX = MMIO base (combines 2 bytes)
+; Returns: AX = combined 2 bytes
 ; -----------------------------------------------------
 FIND_CHIPSET_BASE:
     mov dx, 0x40       ; port to read chipset info
+
     in al, dx          ; read first byte
-    mov ah, al         ; store as high byte
-    in al, dx          ; read second byte -> AL
-    shl ah, 8          ; shift first byte to high byte
-    or ax, ah          ; combine -> AX = first_byte<<8 | second_byte
+    mov bl, al         ; store first byte in BL
+
+    in al, dx          ; read second byte
+
+    mov ah, al         ; AH = second byte
+    mov al, bl         ; AL = first byte
+
     ret
 
 ; -----------------------------------------------------
@@ -151,5 +155,6 @@ NATA_MULTI_IO:
 
 .DONE:
     ret
+
 
 
