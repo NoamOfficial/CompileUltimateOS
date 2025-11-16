@@ -2,6 +2,7 @@
 ; NATA DRIVER - Noam ATA
 ; Multi-Sector, Chipset-Aware, 32MB Buffer
 ; 32-bit Sector Numbers
+; Unified read/write routine (AH = 0 → write, AH = 1 → read)
 ; =====================================================
 
 section .bss
@@ -11,8 +12,7 @@ NATA_BUFFER:
 
 section .text
 global NATA_INIT
-global NATA_MULTI_WRITE
-global NATA_MULTI_READ
+global NATA_MULTI_IO
 global SET_SECTOR_NUM_32
 global SET_SECTOR_COUNT
 global NATA_STATUS
@@ -30,15 +30,15 @@ NATA_SECTOR_COUNT   equ 0x06
 
 ; -----------------------------------------------------
 ; Find chipset base dynamically
-; Returns: AX = MMIO base (not used in I/O)
+; Returns: AX = MMIO base (combines 2 bytes)
 ; -----------------------------------------------------
 FIND_CHIPSET_BASE:
-    mov dx, 0x40
-    in al, dx
-    mov ah, al
-    in al, dx
-    shl ax, 8
-    or ax, ah
+    mov dx, 0x40       ; port to read chipset info
+    in al, dx          ; read first byte
+    mov ah, al         ; store as high byte
+    in al, dx          ; read second byte -> AL
+    shl ah, 8          ; shift first byte to high byte
+    or ax, ah          ; combine -> AX = first_byte<<8 | second_byte
     ret
 
 ; -----------------------------------------------------
@@ -107,16 +107,23 @@ NATA_STATUS:
     ret
 
 ; -----------------------------------------------------
-; Multi-Sector Write
-; AH=0 → write
-; ECX = total bytes to write
+; Unified Multi-Sector I/O
+; AH = 0 → write, 1 → read
+; ECX = total bytes
 ; Uses 32MB buffer
 ; -----------------------------------------------------
-NATA_MULTI_WRITE:
-    mov esi, NATA_BUFFER   ; source buffer
+NATA_MULTI_IO:
+    cmp ah, 0
+    je .WRITE_PATH
+    cmp ah, 1
+    je .READ_PATH
+    ret              ; if AH not 0 or 1, return
+
+.WRITE_PATH:
+    mov esi, NATA_BUFFER
 .WRITE_LOOP:
     cmp ecx, 0
-    je .DONE_WRITE
+    je .DONE
     in al, NATA_STATUS_PORT
     and al, 0x01
     cmp al, 0
@@ -126,20 +133,12 @@ NATA_MULTI_WRITE:
     inc esi
     dec ecx
     jmp .WRITE_LOOP
-.DONE_WRITE:
-    ret
 
-; -----------------------------------------------------
-; Multi-Sector Read
-; AH=1 → read
-; ECX = total bytes to read
-; Uses 32MB buffer
-; -----------------------------------------------------
-NATA_MULTI_READ:
-    mov edi, NATA_BUFFER   ; destination buffer
+.READ_PATH:
+    mov edi, NATA_BUFFER
 .READ_LOOP:
     cmp ecx, 0
-    je .DONE_READ
+    je .DONE
     in al, NATA_STATUS_PORT
     and al, 0x01
     cmp al, 0
@@ -149,6 +148,8 @@ NATA_MULTI_READ:
     inc edi
     dec ecx
     jmp .READ_LOOP
-.DONE_READ:
+
+.DONE:
     ret
+
 
