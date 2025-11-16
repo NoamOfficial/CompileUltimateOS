@@ -1,105 +1,150 @@
-; ------------------------------
-; NATA Read/Write/Pipeline Interface
-; AH = 0 -> Write
-; AH = 1 -> Read
-; Otherwise -> continuous pipeline
-; ------------------------------
+; =====================================================
+; NATA DRIVER - Noam ATA
+; Multi-Sector, Chipset-Aware, 32MB Buffer
+; =====================================================
 
-section .data
-MMIO_BASE       dd 0xFEC00000       ; chipset MMIO base
-ROUTER_BUF_PTR  dd 0                 ; buffer pointer
-DATA_SIZE       dd 0                 ; number of bytes (multiple of 4)
+section .bss
+align 4096
+NATA_BUFFER:
+    resb 33554432   ; 32MB buffer for multi-sector transfers
 
 section .text
-global nata_interface
-nata_interface:
+global NATA_INIT
+global NATA_MULTI_WRITE
+global NATA_MULTI_READ
+global SET_SECTOR_NUM
+global SET_SECTOR_COUNT
+global NATA_STATUS
+global FIND_CHIPSET_BASE
+global CHIPSET_INIT
 
-    cmp ah, 0
-    je .write_mode
-    cmp ah, 1
-    je .read_mode
-    jmp .pipeline_mode
+; -----------------------------------------------------
+; Constants / Ports
+; -----------------------------------------------------
+NATA_DATA_PORT      equ 0x02
+NATA_CTRL_PORT      equ 0x03
+NATA_STATUS_PORT    equ 0x04
+NATA_SECTOR_PORT    equ 0x05
+NATA_SECTOR_COUNT   equ 0x06
 
-; --------------------------
-; WRITE MODE (AH=0)
-; --------------------------
-.write_mode:
-    mov ebx, MMIO_BASE
-    add ebx, 0x10          ; TX register offset
-    mov esi, ROUTER_BUF_PTR
-    mov ecx, DATA_SIZE
-    shr ecx, 2             ; bytes -> dwords
-
-.write_loop:
-    cmp ecx, 0
-    je .write_done
-    mov eax, [esi]
-    mov [ebx], eax
-    add esi, 4
-    dec ecx
-    jmp .write_loop
-
-.write_done:
-    ; Fire command trigger
-    mov al, [MMIO_BASE + 0x3]
-    or al, 1 << 7
-    mov [MMIO_BASE + 0x3], al
+; -----------------------------------------------------
+; Find chipset base dynamically
+; Returns: EAX = MMIO base
+; -----------------------------------------------------
+FIND_CHIPSET_BASE:
+    mov dx, 0x40
+    in al, dx
+    mov ah, al
+    in al, dx
+    shl ax, 8
+    or ax, ah
+    mov eax, eax
     ret
 
-; --------------------------
-; READ MODE (AH=1)
-; --------------------------
-.read_mode:
-    mov ebx, MMIO_BASE
-    add ebx, 0x20          ; RX register offset
-    mov edi, ROUTER_BUF_PTR
-    mov ecx, DATA_SIZE
-    shr ecx, 2             ; bytes -> dwords
+; -----------------------------------------------------
+; Initialize chipset routing for NATA
+; -----------------------------------------------------
+CHIPSET_INIT:
+    call FIND_CHIPSET_BASE
 
-.read_loop:
-    cmp ecx, 0
-    je .read_done
-    mov eax, [ebx]
-    mov [edi], eax
-    add edi, 4
-    dec ecx
-    jmp .read_loop
+    ; Enable NATA line
+    mov dx, 0x41
+    mov al, 0x01
+    out dx, al
 
-.read_done:
+    ; Map RN03 to storage controller
+    mov dx, 0x42
+    mov al, 0x03
+    out dx, al
+
     ret
 
-; --------------------------
-; CONTINUOUS PIPELINE (AH != 0/1)
-; --------------------------
-.pipeline_mode:
-    mov ebx, MMIO_BASE
-    add ebx, 0x10          ; TX offset
-    mov esi, ROUTER_BUF_PTR
-    mov edi, ROUTER_BUF_PTR
-    add edi, DATA_SIZE     ; RX buffer offset for demo
-    mov ecx, DATA_SIZE
-    shr ecx, 2
+; -----------------------------------------------------
+; Initialize NATA Controller
+; -----------------------------------------------------
+NATA_INIT:
+    call CHIPSET_INIT
 
-.pipeline_loop:
+    ; Enable NATA controller (bit7)
+    mov dx, NATA_CTRL_PORT
+    mov al, 0x80
+    out dx, al
+    ret
+
+; -----------------------------------------------------
+; Set sector number (24-bit)
+; EAX = sector number
+; -----------------------------------------------------
+SET_SECTOR_NUM:
+    mov dx, NATA_SECTOR_PORT
+    mov al, al
+    out dx, al
+    shr eax, 8
+    out dx, al
+    shr eax, 8
+    out dx, al
+    ret
+
+; -----------------------------------------------------
+; Set sector count
+; AL = number of sectors
+; -----------------------------------------------------
+SET_SECTOR_COUNT:
+    mov dx, NATA_SECTOR_COUNT
+    out dx, al
+    ret
+
+; -----------------------------------------------------
+; Check NATA status
+; AL = 0 ready, 1 busy
+; -----------------------------------------------------
+NATA_STATUS:
+    in al, NATA_STATUS_PORT
+    and al, 0x01
+    ret
+
+; -----------------------------------------------------
+; Multi-Sector Write
+; AH=0 → write
+; ECX = total bytes to write
+; Uses 32MB buffer
+; -----------------------------------------------------
+NATA_MULTI_WRITE:
+    mov esi, NATA_BUFFER   ; source buffer
+.WRITE_LOOP:
     cmp ecx, 0
-    je .pipeline_done
-
-    ; --- TX ---
-    mov eax, [esi]
-    mov [ebx], eax
-    add esi, 4
-
-    ; --- RX ---
-    mov eax, [ebx + 0x10] ; RX offset
-    mov [edi], eax
-    add edi, 4
-
+    je .DONE_WRITE
+    in al, NATA_STATUS_PORT
+    and al, 0x01
+    cmp al, 0
+    jne .WRITE_LOOP       ; wait until ready
+    mov al, [esi]
+    out NATA_DATA_PORT, al
+    inc esi
     dec ecx
-    jmp .pipeline_loop
+    jmp .WRITE_LOOP
+.DONE_WRITE:
+    ret
 
-.pipeline_done:
-    ; Fire command trigger
-    mov al, [MMIO_BASE + 0x3]
-    or al, 1 << 7
-    mov [MMIO_BASE + 0x3], al
+; -----------------------------------------------------
+; Multi-Sector Read
+; AH=1 → read
+; ECX = total bytes to read
+; Uses 32MB buffer
+; -----------------------------------------------------
+NATA_MULTI_READ:
+    mov edi, NATA_BUFFER   ; destination buffer
+.READ_LOOP:
+    cmp ecx, 0
+    je .DONE_READ
+    in al, NATA_STATUS_PORT
+    and al, 0x01
+    cmp al, 0
+    jne .READ_LOOP        ; wait until ready
+    in al, NATA_DATA_PORT
+    mov [edi], al
+    inc edi
+    dec ecx
+    jmp .READ_LOOP
+.DONE_READ:
     ret
