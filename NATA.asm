@@ -1,6 +1,7 @@
 ; =====================================================
 ; NATA DRIVER - Noam ATA
 ; Multi-Sector, Chipset-Aware, 32MB Buffer
+; 32-bit Sector Numbers
 ; =====================================================
 
 section .bss
@@ -12,7 +13,7 @@ section .text
 global NATA_INIT
 global NATA_MULTI_WRITE
 global NATA_MULTI_READ
-global SET_SECTOR_NUM
+global SET_SECTOR_NUM_32
 global SET_SECTOR_COUNT
 global NATA_STATUS
 global FIND_CHIPSET_BASE
@@ -29,7 +30,7 @@ NATA_SECTOR_COUNT   equ 0x06
 
 ; -----------------------------------------------------
 ; Find chipset base dynamically
-; Returns: EAX = MMIO base
+; Returns: AX = MMIO base (not used in I/O)
 ; -----------------------------------------------------
 FIND_CHIPSET_BASE:
     mov dx, 0x40
@@ -38,7 +39,6 @@ FIND_CHIPSET_BASE:
     in al, dx
     shl ax, 8
     or ax, ah
-    mov eax, eax
     ret
 
 ; -----------------------------------------------------
@@ -72,17 +72,20 @@ NATA_INIT:
     ret
 
 ; -----------------------------------------------------
-; Set sector number (24-bit)
+; Set 32-bit sector number
 ; EAX = sector number
 ; -----------------------------------------------------
-SET_SECTOR_NUM:
+SET_SECTOR_NUM_32:
     mov dx, NATA_SECTOR_PORT
-    mov al, al
-    out dx, al
+
+    out dx, al        ; bits 0-7
     shr eax, 8
-    out dx, al
+    out dx, al        ; bits 8-15
     shr eax, 8
-    out dx, al
+    out dx, al        ; bits 16-23
+    shr eax, 8
+    out dx, al        ; bits 24-31
+
     ret
 
 ; -----------------------------------------------------
@@ -148,3 +151,4 @@ NATA_MULTI_READ:
     jmp .READ_LOOP
 .DONE_READ:
     ret
+
