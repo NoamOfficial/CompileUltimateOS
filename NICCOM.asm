@@ -1,21 +1,15 @@
-; ==================================================
-; UltimateOS COM-Ethernet Driver - Continuous Loop
-; AH = 0 -> SEND
-; AH = 1 -> RECEIVE
-; ==================================================
-
 SECTION .bss
-server      resb 15        ; 15-byte receive buffer
-client      resb 15        ; 15-byte send buffer
+server      resb 15
+client      resb 15
 server_idx  resb 1
 client_idx  resb 1
 client_len  resb 1
 
 SECTION .data
-Packet_Data       dq 0      ; 8-byte payload
-Packet_Protocol   dd 0      ; 4-byte protocol
-Packet_ID         db 0      ; 1-byte ID
-Packet_IP         dw 0      ; 2-byte IP
+Packet_Data       dq 0
+Packet_Protocol   dd 0
+Packet_ID         db 0
+Packet_IP         dw 0
 
 SECTION .text
 global _start
@@ -25,78 +19,71 @@ UART_LSR    equ COM1_PORT+5
 THR_EMPTY   equ 0x20
 DATA_READY  equ 0x01
 
-; ==================================================
-; SetupPacket: decide action based on AH
-; ==================================================
-SetupPacket:
+_start:
 
+SetupPacket:
     cmp ah, 0
     je do_send
     cmp ah, 1
     je do_receive
-    jmp SetupPacket           ; invalid AH, loop
+    jmp SetupPacket
 
-; ==================================================
-; SEND routine
-; ==================================================
 do_send:
     mov esi, client
     mov ecx, 15
 send_loop:
     mov al, [esi]
 wait_thr:
-    in ah, UART_LSR
-    test ah, THR_EMPTY
+    in al, UART_LSR
+    test al, THR_EMPTY
     jz wait_thr
+    mov al, [esi]
     out COM1_PORT, al
     inc esi
     loop send_loop
-    jmp SetupPacket           ; loop back
+    jmp SetupPacket
 
-; ==================================================
-; RECEIVE routine
-; ==================================================
 do_receive:
-    xor esi, esi              ; index into server
+    xor esi, esi
 receive_loop:
     in al, COM1_PORT
-    test al, DATA_READY
+    in dx, UART_LSR
+    test dx, DATA_READY
     jz receive_loop
     mov [server + esi], al
-    movzx eax, al             ; move byte into EAX for immediate use
+    movzx eax, al
     inc esi
     cmp esi, 15
     jl receive_loop
 
-    ; parse server into Packet
+    mov esi, server
     mov edi, Packet_Data
     mov ecx, 8
-parse_data_loop:
-    mov al, [server]
+parse_data:
+    mov al, [esi]
     mov [edi], al
-    inc server
+    inc esi
     inc edi
-    loop parse_data_loop
+    loop parse_data
 
     mov edi, Packet_Protocol
     mov ecx, 4
-parse_protocol_loop:
-    mov al, [server]
+parse_protocol:
+    mov al, [esi]
     mov [edi], al
-    inc server
+    inc esi
     inc edi
-    loop parse_protocol_loop
+    loop parse_protocol
 
-    ; ID db
-    mov al, [server]
+    mov al, [esi]
     inc byte [Packet_ID]
-    inc server
+    inc esi
 
-    ; IP dw
-    mov al, [server]        ; low byte
+    mov al, [esi]
     mov [Packet_IP], al
-    inc server
-    mov al, [server]        ; high byte
+    inc esi
+    mov al, [esi]
     mov [Packet_IP+1], al
 
-    jmp SetupPacket           ; loop back
+    jmp SetupPacket
+
