@@ -1,3 +1,5 @@
+.386
+
 SECTION .bss
 server      resb 15
 client      resb 15
