@@ -16,15 +16,14 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install MASM + Linker
         run: |
           choco install visualstudio2019buildtools --yes --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
           setx PATH "%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64"
 
-      - name: Create build folder
-        run: mkdir build
+  
 
       - name: Assemble ASM files to BIN
         run: |
