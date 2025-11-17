@@ -21,69 +21,95 @@ DATA_READY  equ 0x01
 
 _start:
 
-SetupPacket:
+DriverLoop:
     cmp ah, 0
     je do_send
     cmp ah, 1
     je do_receive
-    jmp SetupPacket
+    jmp DriverLoop
 
 do_send:
-    mov esi, client
-    mov ecx, 15
-send_loop:
-    mov al, [esi]
-wait_thr:
+    mov eax, dword [Packet_Data]
+    mov ebx, dword [Packet_Data+4]
+
+    mov ecx, 4
+    mov edx, eax
+send_dword1:
     in al, UART_LSR
     test al, THR_EMPTY
-    jz wait_thr
-    mov al, [esi]
+    jz send_dword1
+    out COM1_PORT, dl
+    shr edx, 8
+    loop send_dword1
+
+    mov ecx, 4
+    mov edx, ebx
+send_dword2:
+    in al, UART_LSR
+    test al, THR_EMPTY
+    jz send_dword2
+    out COM1_PORT, dl
+    shr edx, 8
+    loop send_dword2
+
+    mov eax, [Packet_Protocol]
+    mov ecx, 4
+send_protocol:
+    mov dl, al
+    in al, UART_LSR
+    test al, THR_EMPTY
+    jz send_protocol
+    out COM1_PORT, dl
+    shr eax, 8
+    loop send_protocol
+
+    mov al, [Packet_ID]
+send_id:
+    in al, UART_LSR
+    test al, THR_EMPTY
+    jz send_id
+    mov al, [Packet_ID]
     out COM1_PORT, al
-    inc esi
-    loop send_loop
-    jmp SetupPacket
+
+    mov ax, [Packet_IP]
+send_ip:
+    mov dl, al
+    in al, UART_LSR
+    test al, THR_EMPTY
+    jz send_ip
+    out COM1_PORT, dl
+    mov dl, ah
+    in al, UART_LSR
+    test al, THR_EMPTY
+    jz send_ip
+    out COM1_PORT, dl
+
+    jmp DriverLoop
 
 do_receive:
     xor esi, esi
 receive_loop:
     in al, COM1_PORT
-    in dx, UART_LSR
-    test dx, DATA_READY
+    in al, UART_LSR
+    test al, DATA_READY
     jz receive_loop
     mov [server + esi], al
-    movzx eax, al
     inc esi
     cmp esi, 15
     jl receive_loop
 
     mov esi, server
-    mov edi, Packet_Data
-    mov ecx, 8
-parse_data:
-    mov al, [esi]
-    mov [edi], al
-    inc esi
-    inc edi
-    loop parse_data
-
-    mov edi, Packet_Protocol
-    mov ecx, 4
-parse_protocol:
-    mov al, [esi]
-    mov [edi], al
-    inc esi
-    inc edi
-    loop parse_protocol
-
-    mov al, [esi]
+    mov eax, [esi]
+    mov [Packet_Data], eax
+    mov eax, [esi+4]
+    mov [Packet_Data+4], eax
+    mov eax, [esi+8]
+    mov [Packet_Protocol], eax
+    mov al, [esi+12]
     inc byte [Packet_ID]
-    inc esi
+    mov ax, [esi+13]
+    mov [Packet_IP], ax
 
-    mov al, [esi]
-    mov [Packet_IP], al
-    inc esi
-    mov al, [esi]
-    mov [Packet_IP+1], al
+    jmp DriverLoop
 
-    jmp SetupPacket
 
