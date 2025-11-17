@@ -1,4 +1,4 @@
-name: Assemble ASM Files
+name: Assemble ASM Files (Web Compatible)
 
 on:
   push:
@@ -15,48 +15,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Install NASM & xxd
-      run: sudo apt-get update && sudo apt-get install -y nasm xxd
+      - name: Install NASM & xxd
+        run: sudo apt-get update && sudo apt-get install -y nasm xxd
 
-    - name: Create build folder
-      run: mkdir -p build
+      - name: Create build folder
+        run: mkdir -p build
 
-    - name: Find changed or new ASM files
-      id: find_changed
-      run: |
-        # detect changed or added ASM files in this commit
-        CHANGED=$(git diff --name-only HEAD^ HEAD --diff-filter=AM | grep '\.asm$' || true)
-        echo "changed_files=$CHANGED" >> $GITHUB_OUTPUT
+      - name: Assemble all ASM files
+        run: |
+          BUILD_DIR=$(pwd)/build
+          mkdir -p "$BUILD_DIR"
 
-    - name: Assemble ASM files
-      run: |
-        BUILD_DIR=$(pwd)/build
-        mkdir -p "$BUILD_DIR"
-        FILES="${{ steps.find_changed.outputs.changed_files }}"
-        
-        # if no files changed, build all top-level ASM files
-        if [ -z "$FILES" ]; then
-          echo "No changed ASM files, building all top-level ASM files."
-          FILES=$(find . -maxdepth 1 -name "*.asm")
-        fi
+          echo "Assembling all top-level ASM files..."
+          for f in $(find . -maxdepth 1 -name "*.asm"); do
+            filename=$(basename "$f" .asm)
+            echo "Assembling $f → $BUILD_DIR/$filename.bin"
+            nasm -f bin -I includes "$f" -o "$BUILD_DIR/$filename.bin"
+            xxd "$BUILD_DIR/$filename.bin" > "$BUILD_DIR/$filename.hex"
+          done
 
-        for f in $FILES; do
-          filename=$(basename "$f" .asm)
-          echo "Assembling $f → $BUILD_DIR/$filename.bin"
-          nasm -f bin -I includes "$f" -o "$BUILD_DIR/$filename.bin"
-          xxd "$BUILD_DIR/$filename.bin" > "$BUILD_DIR/$filename.hex"
-        done
+      - name: Upload BIN + HEX artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: asm-output
+          path: build/
+          compression-level: 0
+          if-no-files-found: ignore
 
-    - name: Upload BIN + HEX artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: asm-output
-        path: build/
-        compression-level: 0
-        if-no-files-found: ignore
 
 
 
