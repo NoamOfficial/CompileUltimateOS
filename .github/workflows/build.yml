@@ -1,4 +1,4 @@
-name: Assemble only new/changed ASM files
+name: Assemble ASM Files
 
 on:
   push:
@@ -24,33 +24,40 @@ jobs:
     - name: Create build folder
       run: mkdir -p build
 
-    - name: Find changed ASM files
+    - name: Find changed or new ASM files
       id: find_changed
       run: |
-        CHANGED=$(git diff --name-only HEAD^ HEAD | grep '\.asm$' || true)
-        echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+        # detect changed or added ASM files in this commit
+        CHANGED=$(git diff --name-only HEAD^ HEAD --diff-filter=AM | grep '\.asm$' || true)
+        echo "changed_files=$CHANGED" >> $GITHUB_OUTPUT
 
-    - name: Assemble new/changed ASM files
+    - name: Assemble ASM files
       run: |
         BUILD_DIR=$(pwd)/build
         mkdir -p "$BUILD_DIR"
-        for f in ${{ steps.find_changed.outputs.changed }}; do
-          [ -z "$f" ] && continue   # skip empty
+        FILES="${{ steps.find_changed.outputs.changed_files }}"
+        
+        # if no files changed, build all top-level ASM files
+        if [ -z "$FILES" ]; then
+          echo "No changed ASM files, building all top-level ASM files."
+          FILES=$(find . -maxdepth 1 -name "*.asm")
+        fi
+
+        for f in $FILES; do
           filename=$(basename "$f" .asm)
-          rm -f "$BUILD_DIR/$filename.bin" "$BUILD_DIR/$filename.hex"
           echo "Assembling $f → $BUILD_DIR/$filename.bin"
           nasm -f bin -I includes "$f" -o "$BUILD_DIR/$filename.bin"
           xxd "$BUILD_DIR/$filename.bin" > "$BUILD_DIR/$filename.hex"
-
         done
 
-    - name: Upload artifacts
+    - name: Upload BIN + HEX artifacts
       uses: actions/upload-artifact@v4
       with:
         name: asm-output
         path: build/
         compression-level: 0
         if-no-files-found: ignore
+
 
 
 
