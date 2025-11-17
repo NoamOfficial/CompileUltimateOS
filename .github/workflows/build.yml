@@ -1,4 +1,4 @@
-name: MASM Build → BIN (16/32-bit)
+name: MASM Build → BIN (No Upload)
 
 on:
   push:
@@ -21,7 +21,6 @@ jobs:
       - name: Install MASM + Linker
         run: |
           choco install visualstudio2019buildtools --yes --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
-          # Add MASM to PATH
           setx PATH "%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64"
 
       - name: Create build folder
@@ -36,7 +35,7 @@ jobs:
             filename=$(basename "$f" .asm)
             echo "Processing $f → $filename.bin"
 
-            # Detect mode by a comment in the ASM file: ;MODE=16 or ;MODE=32
+            # Detect mode by comment ;MODE=16 or ;MODE=32
             SET MODE=32
             findstr /C:";MODE=16" "$f" >nul && SET MODE=16
 
@@ -50,17 +49,10 @@ jobs:
                 link /SUBSYSTEM:NATIVE /ENTRY:main "$BUILD_DIR\$filename.obj" /OUT:"$BUILD_DIR\$filename.exe"
             )
 
-            # Convert to flat binary
+            # Convert .exe to raw binary
             copy /b "$BUILD_DIR\$filename.exe" "$BUILD_DIR\$filename.bin"
           done
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: masm-bin-output
-          path: build/
-          compression-level: 0
-          if-no-files-found: ignore
 
 
 
