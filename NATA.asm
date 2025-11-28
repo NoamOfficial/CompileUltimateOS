@@ -27,6 +27,7 @@ NATA_CTRL_PORT      equ 0x03
 NATA_STATUS_PORT    equ 0x04
 NATA_SECTOR_PORT    equ 0x05
 NATA_SECTOR_COUNT   equ 0x06
+global NATA_BUFFER
 
 ; -----------------------------------------------------
 ; Find chipset base dynamically
